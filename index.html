@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GreenWaste CRM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <script defer src="script.js"></script>
+  </head>
+  <body>
+    <div id="login-screen" class="login-screen active">
+      <div class="login-card">
+        <div class="brand-mark">
+          <div class="brand-icon">♻</div>
+          <div>
+            <h1 class="brand-name">GreenWaste</h1>
+            <p>Customer Management & Billing System</p>
+          </div>
+        </div>
+
+        <form id="login-form" class="login-form">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" placeholder="Enter username" required />
+
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" placeholder="Enter password" required />
+
+          <div class="login-options">
+            <label class="checkbox-row">
+              <input type="checkbox" id="remember" />
+              <span>Remember Me</span>
+            </label>
+            <button type="button" class="text-btn">Forgot Password?</button>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block">Login</button>
+        </form>
+
+        <div class="demo-box">
+          <p><strong>Demo Accounts</strong></p>
+          <div class="demo-row">
+            <span>Admin</span>
+            <code>admin / admin123</code>
+          </div>
+          <div class="demo-row">
+            <span>Staff</span>
+            <code>staff / staff123</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="app-shell" class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-icon">♻</div>
+          <div>
+            <h2 class="brand-name">GreenWaste</h2>
+            <p>Operations Suite</p>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <button class="nav-item active" data-view="dashboard">
+            <span>◉</span>
+            <span>Dashboard</span>
+          </button>
+          <button class="nav-item" data-view="customers">
+            <span>◈</span>
+            <span>Customers</span>
+          </button>
+          <button class="nav-item" data-view="registration">
+            <span>＋</span>
+            <span>Register Customer</span>
+          </button>
+          <button class="nav-item" data-view="billing">
+            <span>▤</span>
+            <span>Billing</span>
+          </button>
+          <button class="nav-item" data-view="payments">
+            <span>◌</span>
+            <span>Payments</span>
+          </button>
+          <button class="nav-item" data-view="areas">
+            <span>⌂</span>
+            <span>Areas</span>
+          </button>
+          <button class="nav-item" data-view="reports">
+            <span>◫</span>
+            <span>Reports</span>
+          </button>
+          <button class="nav-item" data-view="fee-requests">
+            <span>↺</span>
+            <span>Fee Decrease Requests</span>
+          </button>
+          <button class="nav-item" data-view="notifications">
+            <span>✦</span>
+            <span>Notifications</span>
+          </button>
+          <button class="nav-item admin-only" data-view="users">
+            <span>◎</span>
+            <span>Users</span>
+          </button>
+          <button class="nav-item admin-only" data-view="settings">
+            <span>⚙</span>
+            <span>Settings</span>
+          </button>
+        </nav>
+
+        <button id="logout-btn" class="btn btn-ghost btn-block">Logout</button>
+      </aside>
+
+      <div class="main-panel">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Operations Overview</p>
+            <h3 id="page-title">Dashboard</h3>
+          </div>
+          <div class="topbar-actions">
+            <button id="theme-toggle" class="icon-btn" title="Toggle dark mode">☾</button>
+            <div class="profile-pill">
+              <div class="avatar" id="profile-avatar">A</div>
+              <div>
+                <strong id="profile-name">Admin</strong>
+                <p id="profile-role">Administrator</p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main class="content-area">
+          <section id="view-dashboard" class="view active">
+            <div id="dashboard-content"></div>
+          </section>
+
+          <section id="view-customers" class="view">
+            <div id="customers-content"></div>
+          </section>
+
+          <section id="view-registration" class="view">
+            <div id="registration-content"></div>
+          </section>
+
+          <section id="view-billing" class="view">
+            <div id="billing-content"></div>
+          </section>
+
+          <section id="view-payments" class="view">
+            <div id="payments-content"></div>
+          </section>
+
+          <section id="view-areas" class="view">
+            <div id="areas-content"></div>
+          </section>
+
+          <section id="view-reports" class="view">
+            <div id="reports-content"></div>
+          </section>
+
+          <section id="view-fee-requests" class="view">
+            <div id="fee-requests-content"></div>
+          </section>
+
+          <section id="view-notifications" class="view">
+            <div id="notifications-content"></div>
+          </section>
+
+          <section id="view-users" class="view">
+            <div id="users-content"></div>
+          </section>
+
+          <section id="view-settings" class="view">
+            <div id="settings-content"></div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div id="toast-stack" class="toast-stack"></div>
+    <div id="modal-root" class="modal-root"></div>
+  </body>
+</html>
