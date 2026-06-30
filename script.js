@@ -1,7 +1,7 @@
 const STORAGE_KEY = 'greenwaste-state-v1';
 
 const DEFAULT_COMPANY = {
-  name: 'GreenWaste',
+  name: 'Waste Management Recycling Pvt. Ltd',
   phone: '+977-9800000000',
   address: 'Kathmandu, Nepal',
   qrImage: ''
@@ -92,6 +92,9 @@ function seedData() {
     const parsed = JSON.parse(stored);
     Object.assign(state, parsed);
     state.company = { ...DEFAULT_COMPANY, ...(parsed.company || {}) };
+    if (!state.company.name || state.company.name === 'GreenWaste') {
+      state.company.name = DEFAULT_COMPANY.name;
+    }
     state.closeRequests = parsed.closeRequests || [];
     state.users = parsed.users || [];
     ensureUsers();
@@ -766,9 +769,9 @@ function renderUsers() {
       </form>
       <div class="table-wrap" style="margin-top:16px;">
         <table>
-          <thead><tr><th>Name</th><th>Username</th><th>Role</th></tr></thead>
+          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Action</th></tr></thead>
           <tbody>
-            ${state.users.filter(user => user.role === 'staff').map(user => `<tr><td>${user.name}</td><td>${user.username}</td><td>${user.role}</td></tr>`).join('')}
+            ${state.users.filter(user => user.role === 'staff').map(user => `<tr><td>${user.name}</td><td>${user.username}</td><td>${user.role}</td><td><button class="btn btn-ghost" data-remove-staff="${user.id}" type="button">Remove</button></td></tr>`).join('')}
           </tbody>
         </table>
       </div>
@@ -797,6 +800,16 @@ function renderUsers() {
     saveState();
     showToast('Staff account created', 'success');
     renderUsers();
+  });
+
+  content.querySelectorAll('[data-remove-staff]').forEach(button => {
+    button.addEventListener('click', () => {
+      const staffId = button.getAttribute('data-remove-staff');
+      state.users = state.users.filter(user => user.id !== staffId);
+      saveState();
+      showToast('Staff account removed', 'success');
+      renderUsers();
+    });
   });
 }
 
