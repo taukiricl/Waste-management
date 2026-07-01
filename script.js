@@ -2,10 +2,8 @@ const SUPABASE_URL = "https://kzvgwfjyartclvinroon.supabase.co";
 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6dmd3Zmp5YXJ0Y2x2aW5yb29uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MDU3MTYsImV4cCI6MjA5ODM4MTcxNn0.hiKp0InVXCaWXweH_6LKCxW6bn9IRojeDeAsxOCPVVA";
 
-const supabase = window.supabase.createClient(
-  SUPABASE_URL,
-  SUPABASE_KEY
-);
+const STORAGE_KEY = 'waste-management-state-v1';
+const supabase = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 const APP_STATE_TABLE = 'app_state';
 const CUSTOMERS_TABLE = 'customers';
 
@@ -55,15 +53,44 @@ const viewMap = {
 async function saveState() {
   try {
     const payload = JSON.parse(JSON.stringify(state));
+    if (!supabase) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      return;
+    }
     const { error } = await supabase.from(APP_STATE_TABLE).upsert([{ id: 'main', payload }], { onConflict: 'id' });
     if (error) throw error;
   } catch (error) {
-    console.error('Unable to save app state to Supabase:', error);
+    console.error('Unable to save app state:', error);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (storageError) {
+      console.error('Unable to save app state locally:', storageError);
+    }
   }
 }
 
 async function loadState() {
   try {
+    if (!supabase) {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const payload = JSON.parse(stored);
+        Object.assign(state, payload);
+        state.company = { ...DEFAULT_COMPANY, ...(payload.company || {}) };
+        state.customers = Array.isArray(payload.customers) ? payload.customers : [];
+        state.payments = Array.isArray(payload.payments) ? payload.payments : [];
+        state.feeRequests = Array.isArray(payload.feeRequests) ? payload.feeRequests : [];
+        state.notifications = Array.isArray(payload.notifications) ? payload.notifications : [];
+        state.closeRequests = Array.isArray(payload.closeRequests) ? payload.closeRequests : [];
+        state.users = Array.isArray(payload.users) ? payload.users : [];
+        state.areas = Array.isArray(payload.areas) && payload.areas.length ? payload.areas : ['Ward 10', 'Ward 14', 'Ward 15'];
+        ensureUsers();
+        applyBranding();
+        return true;
+      }
+      return false;
+    }
+
     const { data, error } = await supabase.from(APP_STATE_TABLE).select('payload').eq('id', 'main').maybeSingle();
     if (error) throw error;
     if (data?.payload) {
@@ -81,12 +108,13 @@ async function loadState() {
       return true;
     }
   } catch (error) {
-    console.error('Unable to load app state from Supabase:', error);
+    console.error('Unable to load app state:', error);
   }
   return false;
 }
 
 async function fetchCustomersFromSupabase() {
+  if (!supabase) return state.customers;
   try {
     const { data, error } = await supabase.from(CUSTOMERS_TABLE).select('id, payload, created_at').order('created_at', { ascending: false });
     if (error) throw error;
@@ -99,6 +127,7 @@ async function fetchCustomersFromSupabase() {
 }
 
 async function createCustomerInSupabase(customer) {
+  if (!supabase) return null;
   try {
     const record = { id: customer.id, payload: { ...customer }, created_at: new Date().toISOString() };
     const { data, error } = await supabase.from(CUSTOMERS_TABLE).insert([record]).select('id, payload').single();
@@ -111,6 +140,7 @@ async function createCustomerInSupabase(customer) {
 }
 
 async function updateCustomerInSupabase(customer) {
+  if (!supabase) return null;
   try {
     const record = { id: customer.id, payload: { ...customer }, updated_at: new Date().toISOString() };
     const { data, error } = await supabase.from(CUSTOMERS_TABLE).upsert([record], { onConflict: 'id' }).select('id, payload').single();
@@ -123,6 +153,7 @@ async function updateCustomerInSupabase(customer) {
 }
 
 async function deleteCustomerInSupabase(customerId) {
+  if (!supabase) return true;
   try {
     const { error } = await supabase.from(CUSTOMERS_TABLE).delete().eq('id', customerId);
     if (error) throw error;
@@ -151,12 +182,30 @@ function ensureUsers() {
     return state.users;
   }
 
-  const mergedUsers = [...defaults];
+  const mergedUsers = defaults.map(user => ({ ...user }));
   state.users.forEach(user => {
     if (!user?.username) return;
-    const exists = mergedUsers.some(existing => existing.username.toLowerCase() === user.username.toLowerCase());
-    if (!exists) mergedUsers.push({ ...user });
+    const existing = mergedUsers.find(existing => existing.username.toLowerCase() === user.username.toLowerCase());
+    if (existing) {
+      Object.assign(existing, { ...existing, ...user });
+    } else {
+      mergedUsers.push({ ...user });
+    }
   });
+
+  const adminUser = mergedUsers.find(user => user.username.toLowerCase() === 'admin');
+  if (adminUser) {
+    adminUser.name = 'Administrator';
+    adminUser.password = 'admin123';
+    adminUser.role = 'admin';
+  }
+
+  const staffUser = mergedUsers.find(user => user.username.toLowerCase() === 'staff');
+  if (staffUser) {
+    staffUser.name = 'Staff User';
+    staffUser.password = 'staff123';
+    staffUser.role = 'staff';
+  }
 
   state.users = mergedUsers;
   return state.users;
@@ -1073,7 +1122,8 @@ function switchView(viewName) {
 
 function authenticate(username, password) {
   ensureUsers();
-  const user = state.users.find(entry => entry.username.toLowerCase() === username.toLowerCase() && entry.password === password);
+  const normalizedUsername = (username || '').trim().toLowerCase();
+  const user = state.users.find(entry => entry.username.toLowerCase() === normalizedUsername && entry.password === password);
   if (!user) return null;
   return { name: user.name, role: user.role, username: user.username };
 }
