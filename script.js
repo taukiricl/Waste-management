@@ -261,31 +261,6 @@ function showBillModal(bill) {
   document.getElementById('print-bill-from-modal')?.addEventListener('click', () => window.print());
 }
 
-function getStaffPerformance() {
-  const today = new Date().toISOString().slice(0, 10);
-  const currentMonth = today.slice(0, 7);
-  const staffNames = Array.from(new Set([
-    ...state.users.filter(user => user.role === 'staff').map(user => user.name),
-    ...state.payments
-      .map(payment => payment.receivedBy || payment.collectedBy || '')
-      .filter(name => name && !['Admin', 'admin', 'System', 'system'].includes(name))
-  ]));
-
-  return staffNames.map(name => {
-    const staffPayments = state.payments.filter(payment => (payment.receivedBy || payment.collectedBy || '') === name);
-    const todayPayments = staffPayments.filter(payment => payment.date === today);
-    const monthPayments = staffPayments.filter(payment => (payment.date || '').slice(0, 7) === currentMonth);
-
-    return {
-      name,
-      todayCollection: todayPayments.reduce((sum, payment) => sum + payment.amount, 0),
-      todayBills: todayPayments.length,
-      monthlyCollection: monthPayments.reduce((sum, payment) => sum + payment.amount, 0),
-      monthlyBills: monthPayments.length
-    };
-  });
-}
-
 function renderDashboard() {
   const content = document.getElementById('dashboard-content');
   const user = state.currentUser || { role: 'admin' };
@@ -303,8 +278,26 @@ function renderDashboard() {
   }
   const searchValue = document.getElementById('dashboard-search')?.value || '';
   const suggestions = state.customers.filter(customer => [customer.name, customer.phone, customer.area, customer.id].join(' ').toLowerCase().includes(searchValue.toLowerCase()));
-  const staffPerformance = isAdmin ? getStaffPerformance() : [];
-  const defaultStaff = staffPerformance[0];
+  const today = new Date().toISOString().slice(0, 10);
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const staffSummary = state.users
+    .filter(user => user.role === 'staff')
+    .map(user => {
+      const staffPayments = state.payments.filter(payment => {
+        const collectedBy = (payment.receivedBy || payment.collectedBy || '').trim();
+        return collectedBy.toLowerCase() === user.name.toLowerCase();
+      });
+      const todayPayments = staffPayments.filter(payment => payment.date === today);
+      const monthPayments = staffPayments.filter(payment => (payment.date || '').slice(0, 7) === currentMonth);
+      return {
+        ...user,
+        totalCollection: staffPayments.reduce((sum, payment) => sum + payment.amount, 0),
+        todayCollection: todayPayments.reduce((sum, payment) => sum + payment.amount, 0),
+        todayBills: todayPayments.length,
+        monthCollection: monthPayments.reduce((sum, payment) => sum + payment.amount, 0),
+        monthBills: monthPayments.length
+      };
+    });
 
   content.innerHTML = `
     <div class="grid grid-4">
@@ -317,7 +310,29 @@ function renderDashboard() {
         </div>
       `).join('')}
     </div>
-    <div class="grid grid-1" style="margin-top:18px;">
+    <div class="grid grid-2" style="margin-top:18px;">
+      <div class="card">
+        <h3>Staff Status</h3>
+        ${isAdmin ? `
+          <ul style="padding-left:18px;">
+            ${staffSummary.length ? staffSummary.map(staff => `
+              <li style="margin-bottom:12px;">
+                <button class="btn btn-ghost" type="button" data-staff-toggle="${staff.id}" style="padding:0;border:none;background:none;text-align:left;color:inherit;">
+                  <strong>${staff.name}</strong>
+                </button>
+                <div style="margin-top:4px;color:var(--muted);">
+                  Total collection: ${formatCurrency(staff.totalCollection)}<br/>
+                  Today: ${formatCurrency(staff.todayCollection)} • ${staff.todayBills} bill${staff.todayBills === 1 ? '' : 's'}
+                </div>
+                <div id="staff-details-${staff.id}" hidden style="margin-top:6px;padding-left:12px;color:var(--muted);">
+                  Monthly collection: ${formatCurrency(staff.monthCollection)}<br/>
+                  Monthly bills: ${staff.monthBills}
+                </div>
+              </li>
+            `).join('') : '<li>No staff accounts yet.</li>'}
+          </ul>
+        ` : '<p>Staff summary is available for admins.</p>'}
+      </div>
       <div class="card">
         <h3>Notifications</h3>
         <ul>
@@ -346,40 +361,17 @@ function renderDashboard() {
         </div>
       </div>
     </div>
-    ${isAdmin ? `
-      <div class="card" style="margin-top:18px;">
-        <h3>Staff Status</h3>
-        ${staffPerformance.length ? staffPerformance.map(staff => `
-          <button class="btn btn-secondary" style="display:block;width:100%;margin-bottom:8px;text-align:left;" data-staff-name="${staff.name}">
-            <strong>${staff.name}</strong><br/>
-            Today: ${formatCurrency(staff.todayCollection)} • ${staff.todayBills} bills
-          </button>
-        `).join('') : '<p style="color:var(--muted);margin:0;">No staff accounts yet.</p>'}
-        <div id="staff-detail-panel" style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px;">
-          ${defaultStaff ? `
-            <h4>${defaultStaff.name}</h4>
-            <p>Monthly Collection: ${formatCurrency(defaultStaff.monthlyCollection)}</p>
-            <p>Bills This Month: ${defaultStaff.monthlyBills}</p>
-          ` : '<p style="color:var(--muted);margin:0;">Select a staff member to view monthly stats.</p>'}
-        </div>
-      </div>
-    ` : ''}
   `;
 
   content.querySelectorAll('[data-search-customer]').forEach(button => button.addEventListener('click', () => {
     const customerId = button.getAttribute('data-search-customer');
     openCustomerDetails(customerId);
   }));
-  content.querySelectorAll('[data-staff-name]').forEach(button => button.addEventListener('click', () => {
-    const staffName = button.getAttribute('data-staff-name');
-    const staff = staffPerformance.find(item => item.name === staffName);
-    const detailPanel = document.getElementById('staff-detail-panel');
-    if (detailPanel && staff) {
-      detailPanel.innerHTML = `
-        <h4>${staff.name}</h4>
-        <p>Monthly Collection: ${formatCurrency(staff.monthlyCollection)}</p>
-        <p>Bills This Month: ${staff.monthlyBills}</p>
-      `;
+  content.querySelectorAll('[data-staff-toggle]').forEach(button => button.addEventListener('click', () => {
+    const staffId = button.getAttribute('data-staff-toggle');
+    const details = content.querySelector(`#staff-details-${staffId}`);
+    if (details) {
+      details.hidden = !details.hidden;
     }
   }));
   document.getElementById('dashboard-search')?.addEventListener('input', renderDashboard);
