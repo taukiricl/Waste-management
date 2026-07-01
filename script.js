@@ -1,9 +1,18 @@
-const STORAGE_KEY = 'greenwaste-state-v1';
+const SUPABASE_URL = "https://kzvgwfjyartclvinroon.supabase.co";
+
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6dmd3Zmp5YXJ0Y2x2aW5yb29uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MDU3MTYsImV4cCI6MjA5ODM4MTcxNn0.hiKp0InVXCaWXweH_6LKCxW6bn9IRojeDeAsxOCPVVA";
+
+const supabase = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+const APP_STATE_TABLE = 'app_state';
+const CUSTOMERS_TABLE = 'customers';
 
 const DEFAULT_COMPANY = {
   name: 'Waste Management Recycling Pvt. Ltd',
-  phone: '+977-9800000000',
-  address: 'Kathmandu, Nepal',
+  phone: '+977-9856023786',
+  address: 'Pokhara, Nepal',
   qrImage: ''
 };
 
@@ -43,8 +52,85 @@ const viewMap = {
   settings: document.getElementById('view-settings')
 };
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+async function saveState() {
+  try {
+    const payload = JSON.parse(JSON.stringify(state));
+    const { error } = await supabase.from(APP_STATE_TABLE).upsert([{ id: 'main', payload }], { onConflict: 'id' });
+    if (error) throw error;
+  } catch (error) {
+    console.error('Unable to save app state to Supabase:', error);
+  }
+}
+
+async function loadState() {
+  try {
+    const { data, error } = await supabase.from(APP_STATE_TABLE).select('payload').eq('id', 'main').maybeSingle();
+    if (error) throw error;
+    if (data?.payload) {
+      Object.assign(state, data.payload);
+      state.company = { ...DEFAULT_COMPANY, ...(data.payload.company || {}) };
+      state.customers = Array.isArray(data.payload.customers) ? data.payload.customers : [];
+      state.payments = Array.isArray(data.payload.payments) ? data.payload.payments : [];
+      state.feeRequests = Array.isArray(data.payload.feeRequests) ? data.payload.feeRequests : [];
+      state.notifications = Array.isArray(data.payload.notifications) ? data.payload.notifications : [];
+      state.closeRequests = Array.isArray(data.payload.closeRequests) ? data.payload.closeRequests : [];
+      state.users = Array.isArray(data.payload.users) ? data.payload.users : [];
+      state.areas = Array.isArray(data.payload.areas) && data.payload.areas.length ? data.payload.areas : ['Ward 10', 'Ward 14', 'Ward 15'];
+      ensureUsers();
+      applyBranding();
+      return true;
+    }
+  } catch (error) {
+    console.error('Unable to load app state from Supabase:', error);
+  }
+  return false;
+}
+
+async function fetchCustomersFromSupabase() {
+  try {
+    const { data, error } = await supabase.from(CUSTOMERS_TABLE).select('id, payload, created_at').order('created_at', { ascending: false });
+    if (error) throw error;
+    state.customers = Array.isArray(data) ? data.map(entry => ({ ...(entry.payload || {}), id: entry.id })) : [];
+    return state.customers;
+  } catch (error) {
+    console.error('Unable to load customers from Supabase:', error);
+    return state.customers;
+  }
+}
+
+async function createCustomerInSupabase(customer) {
+  try {
+    const record = { id: customer.id, payload: { ...customer }, created_at: new Date().toISOString() };
+    const { data, error } = await supabase.from(CUSTOMERS_TABLE).insert([record]).select('id, payload').single();
+    if (error) throw error;
+    return data?.payload || null;
+  } catch (error) {
+    console.error('Unable to create customer in Supabase:', error);
+    return null;
+  }
+}
+
+async function updateCustomerInSupabase(customer) {
+  try {
+    const record = { id: customer.id, payload: { ...customer }, updated_at: new Date().toISOString() };
+    const { data, error } = await supabase.from(CUSTOMERS_TABLE).upsert([record], { onConflict: 'id' }).select('id, payload').single();
+    if (error) throw error;
+    return data?.payload || null;
+  } catch (error) {
+    console.error('Unable to update customer in Supabase:', error);
+    return null;
+  }
+}
+
+async function deleteCustomerInSupabase(customerId) {
+  try {
+    const { error } = await supabase.from(CUSTOMERS_TABLE).delete().eq('id', customerId);
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Unable to delete customer in Supabase:', error);
+    return false;
+  }
 }
 
 function applyBranding() {
@@ -86,27 +172,20 @@ function addMonthsToNepaliDate(dateValue, monthsToAdd) {
   return `${year}-${String(month).padStart(2, '0')}`;
 }
 
-function seedData() {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) {
-    const parsed = JSON.parse(stored);
-    Object.assign(state, parsed);
-    state.company = { ...DEFAULT_COMPANY, ...(parsed.company || {}) };
-    if (!state.company.name || state.company.name === 'GreenWaste') {
-      state.company.name = DEFAULT_COMPANY.name;
-    }
-    state.closeRequests = parsed.closeRequests || [];
-    state.users = parsed.users || [];
-    ensureUsers();
-    applyBranding();
+async function seedData() {
+  const loaded = await loadState();
+  if (loaded) {
+    await fetchCustomersFromSupabase();
     return;
   }
 
-  state.customers = [
+  const initialCustomers = [
     { id: 'C-1001', name: 'Ramesh Thapa', father: 'Bhoj Thapa', phone: '9841000001', altPhone: '9800000001', address: 'Buddha Colony', area: 'Ward 10', houseNumber: 'A-12', monthlyFee: 250, familyMembers: 4, registrationDate: '2024-01-05', paymentStartsFrom: '2083-01', paidUpTo: '2083-03', remarks: 'Regular', status: 'green' },
     { id: 'C-1002', name: 'Sita Shrestha', father: 'Hari Shrestha', phone: '9841000002', altPhone: '9800000002', address: 'Gairigaun', area: 'Ward 14', houseNumber: 'B-04', monthlyFee: 300, familyMembers: 5, registrationDate: '2024-02-10', paymentStartsFrom: '2083-02', paidUpTo: '2082-12', remarks: 'Needs reminder', status: 'yellow' },
     { id: 'C-1003', name: 'Bikash Lama', father: 'Nir Lama', phone: '9841000003', altPhone: '9800000003', address: 'Mahadevsthan', area: 'Ward 15', houseNumber: 'C-09', monthlyFee: 350, familyMembers: 3, registrationDate: '2024-03-15', paymentStartsFrom: '2083-03', paidUpTo: '2082-09', remarks: 'High risk', status: 'red' }
   ];
+
+  state.customers = initialCustomers;
 
   state.payments = [
     { billNumber: 'B-1001', customerId: 'C-1001', customerName: 'Ramesh Thapa', amount: 750, method: 'Cash', date: '2026-06-20', nepaliDate: '2083-03', months: 3, collectedBy: 'Admin' },
@@ -125,7 +204,10 @@ function seedData() {
   state.closeRequests = [];
   state.users = [];
   ensureUsers();
-  saveState();
+  for (const customer of initialCustomers) {
+    await createCustomerInSupabase(customer);
+  }
+  await saveState();
   applyBranding();
 }
 
@@ -179,6 +261,31 @@ function showBillModal(bill) {
   document.getElementById('print-bill-from-modal')?.addEventListener('click', () => window.print());
 }
 
+function getStaffPerformance() {
+  const today = new Date().toISOString().slice(0, 10);
+  const currentMonth = today.slice(0, 7);
+  const staffNames = Array.from(new Set([
+    ...state.users.filter(user => user.role === 'staff').map(user => user.name),
+    ...state.payments
+      .map(payment => payment.receivedBy || payment.collectedBy || '')
+      .filter(name => name && !['Admin', 'admin', 'System', 'system'].includes(name))
+  ]));
+
+  return staffNames.map(name => {
+    const staffPayments = state.payments.filter(payment => (payment.receivedBy || payment.collectedBy || '') === name);
+    const todayPayments = staffPayments.filter(payment => payment.date === today);
+    const monthPayments = staffPayments.filter(payment => (payment.date || '').slice(0, 7) === currentMonth);
+
+    return {
+      name,
+      todayCollection: todayPayments.reduce((sum, payment) => sum + payment.amount, 0),
+      todayBills: todayPayments.length,
+      monthlyCollection: monthPayments.reduce((sum, payment) => sum + payment.amount, 0),
+      monthlyBills: monthPayments.length
+    };
+  });
+}
+
 function renderDashboard() {
   const content = document.getElementById('dashboard-content');
   const user = state.currentUser || { role: 'admin' };
@@ -196,6 +303,8 @@ function renderDashboard() {
   }
   const searchValue = document.getElementById('dashboard-search')?.value || '';
   const suggestions = state.customers.filter(customer => [customer.name, customer.phone, customer.area, customer.id].join(' ').toLowerCase().includes(searchValue.toLowerCase()));
+  const staffPerformance = isAdmin ? getStaffPerformance() : [];
+  const defaultStaff = staffPerformance[0];
 
   content.innerHTML = `
     <div class="grid grid-4">
@@ -208,24 +317,7 @@ function renderDashboard() {
         </div>
       `).join('')}
     </div>
-    <div class="grid grid-3" style="margin-top:18px;">
-      <div class="card">
-        <h3>Recent Payments</h3>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Customer</th><th>Amount</th><th>Method</th></tr></thead>
-            <tbody>
-              ${state.payments.map(p => `<tr><td>${p.customerName}</td><td>${formatCurrency(p.amount)}</td><td>${p.method}</td></tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="card">
-        <h3>Recent Customers</h3>
-        <ul>
-          ${state.customers.slice(0, 5).map(c => `<li>${c.name} • ${c.area}</li>`).join('')}
-        </ul>
-      </div>
+    <div class="grid grid-1" style="margin-top:18px;">
       <div class="card">
         <h3>Notifications</h3>
         <ul>
@@ -254,11 +346,41 @@ function renderDashboard() {
         </div>
       </div>
     </div>
+    ${isAdmin ? `
+      <div class="card" style="margin-top:18px;">
+        <h3>Staff Status</h3>
+        ${staffPerformance.length ? staffPerformance.map(staff => `
+          <button class="btn btn-secondary" style="display:block;width:100%;margin-bottom:8px;text-align:left;" data-staff-name="${staff.name}">
+            <strong>${staff.name}</strong><br/>
+            Today: ${formatCurrency(staff.todayCollection)} • ${staff.todayBills} bills
+          </button>
+        `).join('') : '<p style="color:var(--muted);margin:0;">No staff accounts yet.</p>'}
+        <div id="staff-detail-panel" style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px;">
+          ${defaultStaff ? `
+            <h4>${defaultStaff.name}</h4>
+            <p>Monthly Collection: ${formatCurrency(defaultStaff.monthlyCollection)}</p>
+            <p>Bills This Month: ${defaultStaff.monthlyBills}</p>
+          ` : '<p style="color:var(--muted);margin:0;">Select a staff member to view monthly stats.</p>'}
+        </div>
+      </div>
+    ` : ''}
   `;
 
   content.querySelectorAll('[data-search-customer]').forEach(button => button.addEventListener('click', () => {
     const customerId = button.getAttribute('data-search-customer');
     openCustomerDetails(customerId);
+  }));
+  content.querySelectorAll('[data-staff-name]').forEach(button => button.addEventListener('click', () => {
+    const staffName = button.getAttribute('data-staff-name');
+    const staff = staffPerformance.find(item => item.name === staffName);
+    const detailPanel = document.getElementById('staff-detail-panel');
+    if (detailPanel && staff) {
+      detailPanel.innerHTML = `
+        <h4>${staff.name}</h4>
+        <p>Monthly Collection: ${formatCurrency(staff.monthlyCollection)}</p>
+        <p>Bills This Month: ${staff.monthlyBills}</p>
+      `;
+    }
   }));
   document.getElementById('dashboard-search')?.addEventListener('input', renderDashboard);
 }
@@ -384,7 +506,7 @@ function renderRegistration() {
     </div>
   `;
 
-  document.getElementById('registration-form').addEventListener('submit', (event) => {
+  document.getElementById('registration-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.target);
     const customer = Object.fromEntries(formData.entries());
@@ -394,7 +516,7 @@ function renderRegistration() {
       return;
     }
     const generatedId = `C-${1000 + state.customers.length + 1}`;
-    state.customers.unshift({
+    const newCustomer = {
       id: generatedId,
       ...customer,
       monthlyFee: Number(customer.monthlyFee),
@@ -402,8 +524,10 @@ function renderRegistration() {
       status: customer.status || 'green',
       paidUpTo: customer.paymentStartsFrom,
       registeredBy: state.currentUser?.name || 'System'
-    });
-    saveState();
+    };
+    state.customers.unshift(newCustomer);
+    await createCustomerInSupabase(newCustomer);
+    await saveState();
     showToast('Customer registered successfully', 'success');
     renderCustomerList();
     switchView('customers');
@@ -521,7 +645,7 @@ function openCustomerDetails(customerId) {
     totalInput.value = customer.monthlyFee * Number(event.target.value || 0);
   });
 
-  document.getElementById('generate-bill').addEventListener('click', () => {
+  document.getElementById('generate-bill').addEventListener('click', async () => {
     const months = document.getElementById('billing-months').value === 'custom' ? Number(document.getElementById('custom-months').value || 0) : Number(document.getElementById('billing-months').value);
     const paymentMethod = document.getElementById('payment-method').value;
     const customBillNumber = document.getElementById('billing-bill-number')?.value?.trim() || '';
@@ -540,13 +664,14 @@ function openCustomerDetails(customerId) {
       receivedBy: state.currentUser?.name || 'System'
     });
     customer.paidUpTo = nextPaidUpTo;
-    saveState();
+    await updateCustomerInSupabase(customer);
+    await saveState();
     showToast('Bill generated and payment recorded', 'success');
     showBillModal(state.payments[0]);
     openCustomerDetails(customer.id);
   });
 
-  document.getElementById('close-account-form')?.addEventListener('submit', (event) => {
+  document.getElementById('close-account-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.target);
     state.closeRequests.unshift({
@@ -558,12 +683,12 @@ function openCustomerDetails(customerId) {
       requestDate: new Date().toISOString().slice(0, 10),
       status: 'Pending'
     });
-    saveState();
+    await saveState();
     showToast('Account closure request submitted', 'success');
     openCustomerDetails(customer.id);
   });
 
-  document.querySelectorAll('[data-close-action]').forEach(button => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-close-action]').forEach(button => button.addEventListener('click', async () => {
     const request = state.closeRequests.find(item => item.id === Number(button.getAttribute('data-id')));
     if (!request) return;
 
@@ -573,7 +698,8 @@ function openCustomerDetails(customerId) {
       state.payments = state.payments.filter(item => item.customerId !== request.customerId);
       state.closeRequests = state.closeRequests.filter(item => item.customerId !== request.customerId);
       state.selectedCustomerId = null;
-      saveState();
+      await deleteCustomerInSupabase(request.customerId);
+      await saveState();
       showToast('Customer record removed after approval', 'success');
       renderCustomerList();
       switchView('customers');
@@ -581,7 +707,7 @@ function openCustomerDetails(customerId) {
     }
 
     request.status = 'Rejected';
-    saveState();
+    await saveState();
     showToast('Account closure request rejected', 'info');
     openCustomerDetails(customer.id);
   }));
@@ -752,7 +878,7 @@ function renderFeeRequests() {
     </div>
   `;
 
-  content.querySelectorAll('[data-action="approve"]').forEach(btn => btn.addEventListener('click', () => {
+  content.querySelectorAll('[data-action="approve"]').forEach(btn => btn.addEventListener('click', async () => {
     const request = state.feeRequests.find(r => r.id === Number(btn.getAttribute('data-id')));
     if (!request) return;
     const customer = state.customers.find(c => c.id === request.customerId);
@@ -761,16 +887,20 @@ function renderFeeRequests() {
       request.status = 'Approved';
       request.approvedBy = state.currentUser.name;
       request.approvalDate = new Date().toISOString().slice(0, 10);
+      state.feeRequests = state.feeRequests.filter(item => item.id !== request.id);
+      await saveState();
       showToast('Fee decrease approved', 'success');
       renderFeeRequests();
     }
   }));
 
-  content.querySelectorAll('[data-action="reject"]').forEach(btn => btn.addEventListener('click', () => {
+  content.querySelectorAll('[data-action="reject"]').forEach(btn => btn.addEventListener('click', async () => {
     const request = state.feeRequests.find(r => r.id === Number(btn.getAttribute('data-id')));
     if (!request) return;
     request.status = 'Rejected';
     request.rejectionReason = 'Rejected by administrator';
+    state.feeRequests = state.feeRequests.filter(item => item.id !== request.id);
+    await saveState();
     showToast('Fee decrease rejected', 'info');
     renderFeeRequests();
   }));
@@ -816,7 +946,7 @@ function renderUsers() {
     </div>
   `;
 
-  document.getElementById('staff-user-form')?.addEventListener('submit', (event) => {
+  document.getElementById('staff-user-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.target);
     const username = String(formData.get('username') || '').trim();
@@ -835,16 +965,16 @@ function renderUsers() {
     }
 
     state.users.push({ id: `staff-${Date.now()}`, name, username, password, role: 'staff' });
-    saveState();
+    await saveState();
     showToast('Staff account created', 'success');
     renderUsers();
   });
 
   content.querySelectorAll('[data-remove-staff]').forEach(button => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const staffId = button.getAttribute('data-remove-staff');
       state.users = state.users.filter(user => user.id !== staffId);
-      saveState();
+      await saveState();
       showToast('Staff account removed', 'success');
       renderUsers();
     });
@@ -872,25 +1002,25 @@ function renderSettings() {
     </div>
   `;
 
-  document.getElementById('settings-form')?.addEventListener('submit', (event) => {
+  document.getElementById('settings-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(event.target);
     state.company.name = formData.get('companyName') || DEFAULT_COMPANY.name;
     state.company.phone = formData.get('companyPhone') || DEFAULT_COMPANY.phone;
     state.company.address = formData.get('companyAddress') || DEFAULT_COMPANY.address;
-    saveState();
+    await saveState();
     applyBranding();
     showToast('Company settings updated', 'success');
     renderSettings();
   });
 
-  document.getElementById('qr-upload')?.addEventListener('change', (event) => {
+  document.getElementById('qr-upload')?.addEventListener('change', async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       state.company.qrImage = reader.result;
-      saveState();
+      await saveState();
       applyBranding();
       showToast('QR code uploaded', 'success');
       renderSettings();
@@ -917,7 +1047,27 @@ function switchView(viewName) {
   if (viewName === 'billing') {
     const selectedCustomer = state.customers.find(customer => customer.id === state.selectedCustomerId) || state.customers[0];
     if (selectedCustomer) {
-      document.getElementById('billing-content').innerHTML = `<div class="card"><h3>Billing Workspace</h3><p>Selected customer: ${selectedCustomer.name}</p><p>Use the customer list to open billing details for a specific account.</p></div>`;
+      document.getElementById('billing-content').innerHTML = `
+        <div class="card">
+          <h3>Billing Workspace</h3>
+          <p>Selected customer: ${selectedCustomer.name}</p>
+          <p>Use the customer list to open billing details for a specific account.</p>
+        </div>
+        <div class="grid grid-2" style="margin-top:18px;">
+          <div class="card">
+            <h3>Recent Payments</h3>
+            <ul>
+              ${state.payments.length ? state.payments.slice(0, 5).map(payment => `<li>${payment.customerName} • ${formatCurrency(payment.amount)} • ${payment.method}</li>`).join('') : '<li>No recent payments yet.</li>'}
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Recent Customers</h3>
+            <ul>
+              ${state.customers.length ? state.customers.slice(0, 5).map(customer => `<li>${customer.name} • ${customer.area}</li>`).join('') : '<li>No recent customers yet.</li>'}
+            </ul>
+          </div>
+        </div>
+      `;
     }
   }
   if (viewName === 'payments') renderPayments();
@@ -936,9 +1086,9 @@ function authenticate(username, password) {
   return { name: user.name, role: user.role, username: user.username };
 }
 
-function showApp(user) {
+async function showApp(user) {
   state.currentUser = user;
-  saveState();
+  await saveState();
   applyBranding();
   loginScreen.classList.remove('active');
   appShell.classList.add('active');
@@ -949,15 +1099,15 @@ function showApp(user) {
   switchView('dashboard');
 }
 
-function logout() {
+async function logout() {
   state.currentUser = null;
-  saveState();
+  await saveState();
   appShell.classList.remove('active');
   loginScreen.classList.add('active');
   loginForm.reset();
 }
 
-loginForm.addEventListener('submit', event => {
+loginForm.addEventListener('submit', async event => {
   event.preventDefault();
   const username = document.getElementById('username').value.trim();
   const password = document.getElementById('password').value;
@@ -967,10 +1117,12 @@ loginForm.addEventListener('submit', event => {
     return;
   }
   showToast(`Welcome ${user.name}`, 'success');
-  showApp(user);
+  await showApp(user);
 });
 
-logoutBtn.addEventListener('click', logout);
+logoutBtn.addEventListener('click', async () => {
+  await logout();
+});
 
 document.getElementById('theme-toggle').addEventListener('click', () => {
   document.documentElement.classList.toggle('dark');
@@ -979,6 +1131,8 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
 
 navItems.forEach(item => item.addEventListener('click', () => switchView(item.getAttribute('data-view'))));
 
-seedData();
-applyBranding();
-renderDashboard();
+(async () => {
+  await seedData();
+  applyBranding();
+  renderDashboard();
+})();
