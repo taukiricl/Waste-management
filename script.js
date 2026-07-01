@@ -142,6 +142,43 @@ function showToast(message, type = 'info') {
   setTimeout(() => toast.remove(), 2600);
 }
 
+function showBillModal(bill) {
+  const modalRoot = document.getElementById('modal-root');
+  const customer = state.customers.find(item => item.id === bill.customerId);
+  modalRoot.innerHTML = `
+    <div class="modal-card">
+      <div class="toolbar">
+        <div>
+          <h3 style="margin:0;">${state.company.name}</h3>
+          <p style="margin:4px 0 0; color:var(--muted);">Payment Receipt</p>
+        </div>
+        <button class="btn btn-ghost" id="close-bill-modal">Close</button>
+      </div>
+      <div style="border:1px solid var(--line); border-radius:16px; padding:16px; margin-top:12px;">
+        <p><strong>Bill Number:</strong> ${bill.billNumber}</p>
+        <p><strong>Customer:</strong> ${bill.customerName}</p>
+        <p><strong>Phone:</strong> ${customer?.phone || '—'}</p>
+        <p><strong>Address:</strong> ${customer?.address || '—'}</p>
+        <p><strong>Months Paid:</strong> ${bill.months}</p>
+        <p><strong>Payment Method:</strong> ${bill.method}</p>
+        <p><strong>Total Amount:</strong> ${formatCurrency(bill.amount)}</p>
+        <p><strong>Received By:</strong> ${bill.receivedBy || bill.collectedBy || '—'}</p>
+        <p><strong>Date:</strong> ${bill.date}</p>
+      </div>
+      <div class="search-row" style="margin-top:16px;">
+        <button class="btn btn-primary" id="print-bill-from-modal">Print</button>
+      </div>
+    </div>
+  `;
+
+  modalRoot.classList.add('active');
+  document.getElementById('close-bill-modal')?.addEventListener('click', () => {
+    modalRoot.classList.remove('active');
+    modalRoot.innerHTML = '';
+  });
+  document.getElementById('print-bill-from-modal')?.addEventListener('click', () => window.print());
+}
+
 function renderDashboard() {
   const content = document.getElementById('dashboard-content');
   const user = state.currentUser || { role: 'admin' };
@@ -505,6 +542,7 @@ function openCustomerDetails(customerId) {
     customer.paidUpTo = nextPaidUpTo;
     saveState();
     showToast('Bill generated and payment recorded', 'success');
+    showBillModal(state.payments[0]);
     openCustomerDetails(customer.id);
   });
 
